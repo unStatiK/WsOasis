@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-    "fmt"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -27,16 +27,16 @@ func oasis(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		log.Printf("recv: %s", message)
-        m["feed"] = string(message)
+		m["feed"] = string(message)
 	}
 }
 
 func feed(w http.ResponseWriter, r *http.Request) {
-    feed_value, ok := m["feed"]
-    if ok {
-        delete(m, "feed")
-        fmt.Fprint(w, feed_value)   
-    }
+	feed_value, ok := m["feed"]
+	if ok {
+		delete(m, "feed")
+		fmt.Fprint(w, feed_value)
+	}
 }
 
 func home(w http.ResponseWriter, r *http.Request) {
@@ -44,12 +44,12 @@ func home(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-    var addr = flag.String("addr", "127.0.0.1:8080", "http service address")
+	var addr = flag.String("addr", "127.0.0.1:8080", "http service address")
 	flag.Parse()
 	log.SetFlags(0)
 	http.HandleFunc("/oasis", oasis)
 	http.HandleFunc("/", home)
-    http.HandleFunc("/feed", feed)
+	http.HandleFunc("/feed", feed)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 
