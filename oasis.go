@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+    "fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -9,11 +10,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var addr = flag.String("addr", "127.0.0.1:8080", "http service address")
-
 var upgrader = websocket.Upgrader{} // use default options
+var m = map[string]string{}
 
-func echo(w http.ResponseWriter, r *http.Request) {
+func oasis(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("upgrade:", err)
@@ -27,103 +27,176 @@ func echo(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		log.Printf("recv: %s", message)
-		//err = c.WriteMessage(mt, message)
-		//if err != nil {
-		//	log.Println("write:", err)
-		//	break
-		//}
+        m["feed"] = string(message)
 	}
 }
 
+func feed(w http.ResponseWriter, r *http.Request) {
+    feed_value, ok := m["feed"]
+    if ok {
+        delete(m, "feed")
+        fmt.Fprint(w, feed_value)   
+    }
+}
+
 func home(w http.ResponseWriter, r *http.Request) {
-        log.Println("start ws oasis:", "ws://"+r.Host+"/echo")
 	homeTemplate.Execute(w, "ws://"+r.Host+"/echo")
 }
 
 func main() {
+    var addr = flag.String("addr", "127.0.0.1:8080", "http service address")
 	flag.Parse()
 	log.SetFlags(0)
-	http.HandleFunc("/echo", echo)
+	http.HandleFunc("/oasis", oasis)
 	http.HandleFunc("/", home)
+    http.HandleFunc("/feed", feed)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 
 var homeTemplate = template.Must(template.New("").Parse(`
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
+<title>WS Oasis dashboard</title>
+
+<style>
+    #ws_oasis {
+        resize: none;
+    }
+
+.button-oasis {
+  background-color: #e1ecf4;
+  border-radius: 3px;
+  border: 1px solid #7aa7c7;
+  box-shadow: rgba(255, 255, 255, .7) 0 1px 0 0 inset;
+  box-sizing: border-box;
+  color: #39739d;
+  cursor: pointer;
+  display: inline-block;
+  font-family: -apple-system,system-ui,"Segoe UI","Liberation Sans",sans-serif;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.15385;
+  margin: 0;
+  outline: none;
+  padding: 8px .8em;
+  position: relative;
+  text-align: center;
+  text-decoration: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+
+.button-oasis:hover,
+.button-oasis:focus {
+  background-color: #b3d3ea;
+  color: #2c5777;
+}
+
+.button-oasis:focus {
+  box-shadow: 0 0 0 4px rgba(0, 149, 255, .15);
+}
+
+.button-oasis:active {
+  background-color: #a0c7e4;
+  box-shadow: none;
+  color: #2c5777;
+}
+
+.button-oasis:disabled,
+.button-oasis[disabled]{
+  border: 1px solid #999999;
+  background-color: #cccccc;
+  color: #666666;
+}
+</style>
+
 <script>  
 window.addEventListener("load", function(evt) {
+    const oasisEl = document.getElementById("ws_oasis");
+    const startOasisButton = document.getElementById("start_oasis");
+    const stopOasisButton = document.getElementById("stop_oasis");
+    const taLineHeight = 20;
+    stopOasisButton.disabled = true;
+    var controller = null;
+    var is_feed_disable = false;
 
-    var output = document.getElementById("output");
-    var input = document.getElementById("input");
-    var ws;
+    function sleep(ms) {
+  		return new Promise(resolve => setTimeout(resolve, ms));
+	}
 
-    var print = function(message) {
-        var d = document.createElement("div");
-        d.textContent = message;
-        output.appendChild(d);
-        output.scroll(0, output.scrollHeight);
+    function start_poll_oasis(ms) {
+        var poll = (promiseFn, duration) => promiseFn().then(sleep(duration).then(() => {
+                if (is_feed_disable === false) {
+                    poll(promiseFn, duration);
+                }
+            }    
+        ));
+        poll(() => new Promise(() => get_feed()), ms);
+    } 
+
+    function get_feed() {
+        if (is_feed_disable === false) {
+                const xhr = new XMLHttpRequest();
+                xhr.open("GET", "http://127.0.0.1:8080/feed");
+                xhr.send();
+                xhr.responseType = "plain/text";
+                xhr.onload = () => {
+                    if (xhr.readyState == 4 && xhr.status == 200) {
+                        var response = xhr.response;
+                        if (response !== "") {
+                            var taHeight = oasisEl.scrollHeight;
+                            var numberOfLines = Math.floor(taHeight/taLineHeight);
+                            if (numberOfLines > 15) {
+                                oasisEl.textContent = "clearing\r\n";
+                                var text = oasisEl.textContent;
+                                oasisEl.textContent = text + response + '\r\n';
+                            } else {
+                                var text = oasisEl.textContent;
+                                oasisEl.textContent = text + response + '\r\n';
+                            }
+                        }
+                    }
+                }
+        }
     };
 
-    document.getElementById("open").onclick = function(evt) {
-        if (ws) {
-            return false;
+    stopOasisButton.onclick = function(evt) {
+        if (controller !== null && is_feed_disable === false) {
+            controller.abort('stop');
+            stopOasisButton.disabled = true; 
+            startOasisButton.disabled = false; 
         }
-        ws = new WebSocket("{{.}}");
-        ws.onopen = function(evt) {
-            print("OPEN");
-        }
-        ws.onclose = function(evt) {
-            print("CLOSE");
-            ws = null;
-        }
-        ws.onmessage = function(evt) {
-            print("RESPONSE: " + evt.data);
-        }
-        ws.onerror = function(evt) {
-            print("ERROR: " + evt.data);
-        }
-        return false;
     };
 
-    document.getElementById("send").onclick = function(evt) {
-        if (!ws) {
-            return false;
-        }
-        print("SEND: " + input.value);
-        ws.send(input.value);
-        return false;
-    };
+    startOasisButton.onclick = function(evt) {
+        controller = new AbortController();
+        const abortListener = ({target}) => {
+            controller.signal.removeEventListener('abort', abortListener);
+            is_feed_disable = true;    
+        } 
+        controller.signal.addEventListener('abort', abortListener);
 
-    document.getElementById("close").onclick = function(evt) {
-        if (!ws) {
-            return false;
-        }
-        ws.close();
-        return false;
+        is_feed_disable = false;
+        start_poll_oasis(1000);
+
+        stopOasisButton.disabled = false; 
+        startOasisButton.disabled = true; 
     };
 
 });
 </script>
 </head>
 <body>
-<table>
-<tr><td valign="top" width="50%">
-<p>Click "Open" to create a connection to the server, 
-"Send" to send a message to the server and "Close" to close the connection. 
-You can change the message and send multiple times.
-<p>
-<form>
-<button id="open">Open</button>
-<button id="close">Close</button>
-<p><input id="input" type="text" value="Hello world!">
-<button id="send">Send</button>
-</form>
-</td><td valign="top" width="50%">
-<div id="output" style="max-height: 70vh;overflow-y: scroll;"></div>
-</td></tr></table>
-</body>
+    <div id="oasis_header">Oasis output</div>
+    <textarea id="ws_oasis" name="oasis" rows="20" cols="100" resize="none"></textarea>
+    <br /><br />
+    <button id="start_oasis" class="button-oasis" role="button">Start</button>
+    <button id="stop_oasis" class="button-oasis" role="button">Stop</button>
+</body>  
 </html>
 `))
