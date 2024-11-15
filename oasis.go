@@ -16,17 +16,17 @@ var m = map[string]string{}
 func oasis(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Print("upgrade:", err)
+		//log.Print("upgrade:", err)
 		return
 	}
 	defer c.Close()
 	for {
 		_, message, err := c.ReadMessage()
 		if err != nil {
-			log.Println("read:", err)
+			//log.Println("read:", err)
 			break
 		}
-		log.Printf("recv: %s", message)
+		//log.Printf("recv: %s", message)
 		m["feed"] = string(message)
 	}
 }
