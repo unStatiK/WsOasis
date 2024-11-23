@@ -6,11 +6,13 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/websocket"
 )
 
 var upgrader = websocket.Upgrader{} // use default options
+var homeTemplate = template.New("")
 var m = map[string]string{}
 
 func oasis(w http.ResponseWriter, r *http.Request) {
@@ -44,16 +46,19 @@ func home(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	var addr = flag.String("addr", "127.0.0.1:8080", "http service address")
+	address := os.Args[1]
+	var addr = flag.String("addr", address, "http service address")
 	flag.Parse()
 	log.SetFlags(0)
+	prepareTemplate(address)
 	http.HandleFunc("/oasis", oasis)
 	http.HandleFunc("/", home)
 	http.HandleFunc("/feed", feed)
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 
-var homeTemplate = template.Must(template.New("").Parse(`
+func prepareTemplate(address string) {
+	var templateContent = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -142,7 +147,7 @@ window.addEventListener("load", function(evt) {
     function get_feed() {
         if (is_feed_disable === false) {
                 const xhr = new XMLHttpRequest();
-                xhr.open("GET", "http://127.0.0.1:8080/feed");
+                xhr.open("GET", "http://%s/feed");
                 xhr.send();
                 xhr.responseType = "plain/text";
                 xhr.onload = () => {
@@ -199,4 +204,9 @@ window.addEventListener("load", function(evt) {
     <button id="stop_oasis" class="button-oasis" role="button">Stop</button>
 </body>  
 </html>
-`))
+`
+
+	var formattedContent = fmt.Sprintf(templateContent, address)
+	// var homeTemplatee = template.Must(homeTemplate.Parse(`
+	template.Must(homeTemplate.Parse(formattedContent))
+}
