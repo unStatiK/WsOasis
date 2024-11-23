@@ -207,6 +207,5 @@ window.addEventListener("load", function(evt) {
 `
 
 	var formattedContent = fmt.Sprintf(templateContent, address)
-	// var homeTemplatee = template.Must(homeTemplate.Parse(`
 	template.Must(homeTemplate.Parse(formattedContent))
 }
