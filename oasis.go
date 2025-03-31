@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"html/template"
@@ -14,6 +15,11 @@ import (
 var upgrader = websocket.Upgrader{} // use default options
 var homeTemplate = template.New("")
 var m = map[string]string{}
+
+type OasisFeed struct {
+	OasisId string `json:"oasis_id"`
+	Message string `json:"message"`
+}
 
 func oasis(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
@@ -29,15 +35,24 @@ func oasis(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		//log.Printf("recv: %s", message)
-		m["feed"] = string(message)
+		var oasis_feed OasisFeed
+		err = json.Unmarshal(message, &oasis_feed)
+		if err != nil {
+			log.Println("error while unmarshaling oasis feed")
+			return
+		}
+		m[oasis_feed.OasisId] = oasis_feed.Message
 	}
 }
 
 func feed(w http.ResponseWriter, r *http.Request) {
-	feed_value, ok := m["feed"]
-	if ok {
-		delete(m, "feed")
-		fmt.Fprint(w, feed_value)
+	oasis_id := r.URL.Query().Get("oasis_id")
+	if oasis_id != "" {
+		feed_value, ok := m[oasis_id]
+		if ok {
+			delete(m, oasis_id)
+			fmt.Fprint(w, feed_value)
+		}
 	}
 }
 
@@ -125,6 +140,7 @@ window.addEventListener("load", function(evt) {
     const oasisEl = document.getElementById("ws_oasis");
     const startOasisButton = document.getElementById("start_oasis");
     const stopOasisButton = document.getElementById("stop_oasis");
+    const oasisIdInput = document.getElementById("oasis_id");
     const taLineHeight = 20;
     stopOasisButton.disabled = true;
     var controller = null;
@@ -134,20 +150,21 @@ window.addEventListener("load", function(evt) {
   		return new Promise(resolve => setTimeout(resolve, ms));
 	}
 
-    function start_poll_oasis(ms) {
+    function start_poll_oasis(ms, oasis_id) {
         var poll = (promiseFn, duration) => promiseFn().then(sleep(duration).then(() => {
                 if (is_feed_disable === false) {
                     poll(promiseFn, duration);
                 }
             }    
         ));
-        poll(() => new Promise(() => get_feed()), ms);
+        poll(() => new Promise(() => get_feed(oasis_id)), ms);
     } 
 
-    function get_feed() {
+    function get_feed(oasis_id) {
         if (is_feed_disable === false) {
                 const xhr = new XMLHttpRequest();
-                xhr.open("GET", "http://%s/feed");
+                const url = "http://%s/feed?oasis_id=" + oasis_id;
+                xhr.open("GET", url);
                 xhr.send();
                 xhr.responseType = "plain/text";
                 xhr.onload = () => {
@@ -187,7 +204,8 @@ window.addEventListener("load", function(evt) {
         controller.signal.addEventListener('abort', abortListener);
 
         is_feed_disable = false;
-        start_poll_oasis(1000);
+        const oasis_id = oasisIdInput.value;
+        start_poll_oasis(1000, oasis_id);
 
         stopOasisButton.disabled = false; 
         startOasisButton.disabled = true; 
@@ -199,6 +217,9 @@ window.addEventListener("load", function(evt) {
 <body>
     <div id="oasis_header">Oasis output</div>
     <textarea id="ws_oasis" name="oasis" rows="20" cols="100" resize="none"></textarea>
+    <br /><br />
+    <div id="oasis_header">Oasis id</div>
+    <input type="text" id="oasis_id" name="oasis_id" minlength="4" maxlength="8" size="10" />
     <br /><br />
     <button id="start_oasis" class="button-oasis" role="button">Start</button>
     <button id="stop_oasis" class="button-oasis" role="button">Stop</button>
